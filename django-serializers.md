@@ -1,4 +1,4 @@
-# **The Comprehensive Guide to Django Serializers – 2025**
+# **Guide to Django Serializers – 2025**
 
 In modern web development, transferring complex Python objects to a format suitable for client-server communication is a recurring challenge. **Django REST Framework (DRF) serializers** provide a powerful mechanism to **convert complex data types (like Django models) into native Python data types**, which can then be rendered into **JSON, XML, or other content types**.
 
@@ -215,6 +215,7 @@ class DynamicFieldsModelSerializer(serializers.ModelSerializer):
 ---
 
 ## 9. Serializer Lifecycle in a DRF API
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/ad4bcc49-87bf-4f64-b913-d28a8138baae" />
 
 1. **Request Received:** Client sends JSON payload to API endpoint.
 2. **Deserialization:** DRF maps JSON to Python data using the serializer.
