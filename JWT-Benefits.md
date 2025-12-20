@@ -90,6 +90,7 @@ Django defaults to **stateful session authentication**, but JWTs are preferred f
 ---
 
 ## 5. JWT Lifecycle in a Modern API
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/5f4b8431-1770-4093-8972-912d28058c65" />
 
 ### 5.1 Authentication
 
