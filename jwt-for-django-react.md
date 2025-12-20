@@ -1,29 +1,31 @@
-# **Guide to Implementing JWT in Django REST Framework & React**
+# **Guide to JWT Authentication with Django & React**
 
-This guide provides a professional-grade implementation of **Stateless Authentication** using `djangorestframework-simplejwt` on the backend and **React (Vite) + Axios** on the frontend. This setup includes automated token refreshing and **Protected Routing** to ensure a secure, seamless user experience.
-
----
-
-## **1. The Mental Model**
-
-In a JWT-based system, the server does not store session data. It issues a signed token to the client, which the server verifies cryptographically. This allows for **Horizontal Scalability**, as any server instance can verify the user without a shared session store.
+This guide provides a professional-grade implementation of **Stateless Authentication** using `djangorestframework-simplejwt` and **React (Vite) + Axios**. This setup covers the full lifecycle: secure backend configuration, custom claims, automated token refreshing (interceptors), and client-side protected routing.
 
 ---
 
-## **2. Installation & Backend Setup**
+## **1. The Architectural Mental Model**
 
-### **2.1 Required Packages**
+In a JWT-based system, the server is "blind" to sessions. It doesn't store login states in memory. Instead, it issues a signed token to the client. The client presents this token in the `Authorization` header, and the server verifies it cryptographically using a secret key. This enables **Horizontal Scalability**, as any server instance can verify any user without a shared session database.
 
-Install the JWT library and `django-cors-headers` to allow your React app (port 5173) to communicate with your Django API.
+---
+
+## **2. Backend Implementation (Django)**
+
+### **2.1 Installation**
+
+Install the core JWT library and CORS headers to allow your React app (port 5173) to communicate with your Django API.
 
 ```bash
 pip install djangorestframework-simplejwt django-cors-headers
 
 ```
 
-### **2.2 Django Settings (`settings.py`)**
+### **2.2 Configuration (`settings.py`)**
 
 ```python
+from datetime import timedelta
+
 INSTALLED_APPS = [
     ...
     'corsheaders',
@@ -50,27 +52,70 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=50),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': False,
+
+    'ALGORITHM': 'HS256',
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    'JWK_URL': None,
+    'LEEWAY': 0,
+
     'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
+
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+
+    'JTI_CLAIM': 'jti',
+
+    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
 
 ```
 
 ---
 
-## **3. Custom Views & Testing**
+## **3. Custom Logic & Testing**
 
-### **3.1 Auth Views (`views.py`)**
+### **3.1 Custom Claims (`serializers.py`)**
+
+Extend the JWT payload to include user data (like `username` or `email`) so the frontend can personalize the UI without a secondary API call.
 
 ```python
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # Custom claims
+        token['username'] = user.username
+        token['email'] = user.email
+        return token
+
+```
+
+### **3.2 Logout View (`views.py`)**
+
+Blacklisting the refresh token ensures the session is invalidated on the server side.
+
+```python
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
+
     def post(self, request):
         try:
             refresh_token = request.data["refresh"]
@@ -82,7 +127,7 @@ class LogoutView(APIView):
 
 ```
 
-### **3.2 Django Integration Test (`tests.py`)**
+### **3.3 Django Framework Integration Test (`tests.py`)**
 
 ```python
 from django.urls import reverse
@@ -91,25 +136,29 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 
 class AuthTests(APITestCase):
-    def test_login_and_logout(self):
-        User.objects.create_user(username="test", password="password123")
-        # Login
+    def setUp(self):
+        self.user = User.objects.create_user(username="test", password="password123")
+
+    def test_full_auth_cycle(self):
+        # 1. Login
         res = self.client.post(reverse('token_obtain_pair'), {"username": "test", "password": "password123"})
-        access = res.data['access']
-        # Logout
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        access, refresh = res.data['access'], res.data['refresh']
+
+        # 2. Logout
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {access}')
-        logout_res = self.client.post(reverse('auth_logout'), {"refresh": res.data['refresh']})
+        logout_res = self.client.post(reverse('auth_logout'), {"refresh": refresh})
         self.assertEqual(logout_res.status_code, status.HTTP_205_RESET_CONTENT)
 
 ```
 
 ---
 
-## **4. Frontend Implementation: React & Axios**
+## **4. Frontend Implementation (React + Axios)**
 
 ### **4.1 Axios Interceptor (`api.js`)**
 
-The interceptor handles 401 errors by refreshing the token and retrying the original request automatically.
+The "Interceptor" automatically handles 401 errors by attempting a token refresh and retrying the failed request.
 
 ```javascript
 import axios from 'axios';
@@ -130,7 +179,7 @@ api.interceptors.response.use(
             originalRequest._retry = true;
             try {
                 const refresh = localStorage.getItem('refresh_token');
-                const { data } = await axios.post('http://localhost:8000/api/token/refresh/', { refresh });
+                const { data } = await axios.post('/token/refresh/', { refresh });
                 localStorage.setItem('access_token', data.access);
                 return api(originalRequest);
             } catch (err) {
@@ -149,9 +198,9 @@ export default api;
 
 ## **5. React Router: Protected Routes**
 
-### **5.1 ProtectedRoute Component**
+### **5.1 Route Guard (`ProtectedRoute.jsx`)**
 
-Create a wrapper that checks for the existence of an access token before rendering children.
+Prevents unauthenticated users from accessing specific components.
 
 ```jsx
 import { Navigate } from 'react-router-dom';
@@ -163,49 +212,21 @@ export default function ProtectedRoute({ children }) {
 
 ```
 
-### **5.2 Main Routing (`App.jsx`)**
-
-```jsx
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import Login from './Login';
-import Dashboard from './Dashboard';
-import ProtectedRoute from './ProtectedRoute';
-
-function App() {
-    return (
-        <BrowserRouter>
-            <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route 
-                    path="/dashboard" 
-                    element={
-                        <ProtectedRoute>
-                            <Dashboard />
-                        </ProtectedRoute>
-                    } 
-                />
-            </Routes>
-        </BrowserRouter>
-    );
-}
-
-```
-
 ---
 
 ## **6. Engineering Trade-offs**
 
-| Setting | Security Posture | Trade-off |
+| Setting | Posture | Trade-off |
 | --- | --- | --- |
-| **Protected Routes** | **Medium** | Client-side check only; API still requires token verification. |
-| **Axios Interceptor** | **Excellent UX** | Completely hides token refresh logic from components. |
-| **LocalStorage** | **Vulnerable** | Susceptible to XSS. Use **HttpOnly Cookies** for high-security environments. |
+| **Token Rotation** | **High Security** | Every refresh issues a new refresh token, preventing replay attacks. |
+| **Custom Claims** | **Better UX** | Eliminates extra "fetch user profile" calls on initial load. |
+| **LocalStorage** | **Low Security** | Vulnerable to XSS; for highly sensitive data, use **HttpOnly Cookies**. |
 
 ---
 
-## **7. Professional Best Practices**
+## **7. Professional Checklist**
 
-1. **Migrations:** Run `python manage.py migrate` for the blacklist tables.
-2. **Double Verification:** Never rely *only* on React Router for security; the Backend is the ultimate gatekeeper.
-3. **Use HTTPS:** In production, JWTs must never travel over unencrypted HTTP.
+1. **Migrations:** Ensure `python manage.py migrate` is run for the blacklist tables.
+2. **Environment Variables:** Always keep your `SECRET_KEY` and allowed origins out of source control.
+3. **HTTPS:** JWTs are essentially "passwords" in a header; they must be encrypted in transit via SSL.
 
