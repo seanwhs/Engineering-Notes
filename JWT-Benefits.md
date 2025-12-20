@@ -1,4 +1,4 @@
-# **The Comprehensive Guide to JSON Web Tokens (JWT) – 2025**
+# **The Comprehensive Guide to JSON Web Tokens (JWT)**
 
 In modern web development, securing communication between a client and a server is paramount. The **JSON Web Token (JWT)** has emerged as the industry standard for creating **compact, self-contained tokens** used for authentication, authorization, and information exchange across distributed systems.
 
