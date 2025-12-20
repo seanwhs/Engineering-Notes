@@ -1,4 +1,4 @@
-# **The Complete Guide: Implementing JWT in Django REST Framework & React**
+# **Guide to Implementing JWT in Django REST Framework & React**
 
 This guide provides a professional-grade implementation of **Stateless Authentication** using `djangorestframework-simplejwt` on the backend and **React (Vite) + Axios** on the frontend. This setup includes automated token refreshing and **Protected Routing** to ensure a secure, seamless user experience.
 
