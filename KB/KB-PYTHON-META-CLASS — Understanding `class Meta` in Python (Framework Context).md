@@ -10,6 +10,7 @@
 ## 1. Purpose
 
 This note explains the use of `class Meta` in Python, specifically in frameworks like Django and DRF, as a **pattern for providing metadata to classes**. It clarifies how `Meta` works, why it's used, and common options.
+<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/d7203b88-8488-479d-8f1f-8147407064c5" />
 
 ---
 
